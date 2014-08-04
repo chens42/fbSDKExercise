@@ -2,11 +2,11 @@ package csj.facebookpractice;
 
 import android.app.AlertDialog;
 import android.content.Intent;
-import android.graphics.Bitmap;
-import android.graphics.BitmapFactory;
 import android.os.Bundle;
 import android.support.v4.app.FragmentActivity;
 import android.util.Log;
+import android.view.View;
+import android.widget.Button;
 import android.widget.TextView;
 
 import com.facebook.AppEventsLogger;
@@ -25,13 +25,11 @@ import com.facebook.widget.FacebookDialog;
 import com.facebook.widget.LoginButton;
 import com.facebook.widget.ProfilePictureView;
 
-import java.util.Arrays;
-import java.util.Date;
 import java.util.List;
 
 public class MyActivity extends FragmentActivity {
 
-
+    private static final String PERMISSION = "publish_actions";
     private final String PENDING_ACTION_BUNDLE_KEY = "com.facebook.samples.hellofacebook:PendingAction";
 
     private LoginButton loginButton;
@@ -42,11 +40,10 @@ public class MyActivity extends FragmentActivity {
     private GraphPlace place;
     private List<GraphUser> tags;
     private boolean canPresentShareDialog;
-    private boolean canPresentShareDialogWithPhotos;
+    private Button postStatusUpdateButton;
 
     private enum PendingAction {
         NONE,
-        POST_PHOTO,
         POST_STATUS_UPDATE
     }
 
@@ -101,9 +98,13 @@ public class MyActivity extends FragmentActivity {
         // Can we present the share dialog for regular links?
         canPresentShareDialog = FacebookDialog.canPresentShareDialog(this,
                 FacebookDialog.ShareDialogFeature.SHARE_DIALOG);
-        // Can we present the share dialog for photos?
-        canPresentShareDialogWithPhotos = FacebookDialog.canPresentShareDialog(this,
-                FacebookDialog.ShareDialogFeature.PHOTOS);
+
+        postStatusUpdateButton = (Button) findViewById(R.id.postButton);
+        postStatusUpdateButton.setOnClickListener(new View.OnClickListener() {
+            public void onClick(View view) {
+                onClickPostStatusUpdate();
+            }
+        });
     }
 
     @Override
@@ -114,7 +115,6 @@ public class MyActivity extends FragmentActivity {
         // Call the 'activateApp' method to log an app event for use in analytics and advertising reporting.  Do so in
         // the onResume methods of the primary Activities that an app may be launched into.
         AppEventsLogger.activateApp(this);
-
         updateUI();
     }
 
@@ -180,9 +180,6 @@ public class MyActivity extends FragmentActivity {
         pendingAction = PendingAction.NONE;
 
         switch (previouslyPendingAction) {
-            case POST_PHOTO:
-                postPhoto();
-                break;
             case POST_STATUS_UPDATE:
                 postStatusUpdate();
                 break;
@@ -224,7 +221,8 @@ public class MyActivity extends FragmentActivity {
             FacebookDialog shareDialog = createShareDialogBuilderForLink().build();
             uiHelper.trackPendingDialogCall(shareDialog.present());
         } else if (user != null && hasPublishPermission()) {
-            final String message = getString(R.string.status_update, user.getFirstName(), (new Date().toString()));
+            //post the string on facebook
+            final String message = "hello shao jin, the current time is "+ System.currentTimeMillis();
             Request request = Request
                     .newStatusUpdateRequest(Session.getActiveSession(), message, place, tags, new Request.Callback() {
                         @Override
@@ -237,33 +235,32 @@ public class MyActivity extends FragmentActivity {
             pendingAction = PendingAction.POST_STATUS_UPDATE;
         }
     }
-
-
-    private FacebookDialog.PhotoShareDialogBuilder createShareDialogBuilderForPhoto(Bitmap... photos) {
-        return new FacebookDialog.PhotoShareDialogBuilder(this)
-                .addPhotos(Arrays.asList(photos));
-    }
-
-    private void postPhoto() {
-        Bitmap image = BitmapFactory.decodeResource(this.getResources(), R.drawable.icon);
-        if (canPresentShareDialogWithPhotos) {
-            FacebookDialog shareDialog = createShareDialogBuilderForPhoto(image).build();
-            uiHelper.trackPendingDialogCall(shareDialog.present());
-        } else if (hasPublishPermission()) {
-            Request request = Request.newUploadPhotoRequest(Session.getActiveSession(), image, new Request.Callback() {
-                @Override
-                public void onCompleted(Response response) {
-                    showPublishResult(getString(R.string.photo_post), response.getGraphObject(), response.getError());
-                }
-            });
-            request.executeAsync();
-        } else {
-            pendingAction = PendingAction.POST_PHOTO;
-        }
-    }
-
     private boolean hasPublishPermission() {
         Session session = Session.getActiveSession();
         return session != null && session.getPermissions().contains("publish_actions");
+    }
+
+
+    private void onClickPostStatusUpdate() {
+        performPublish(PendingAction.POST_STATUS_UPDATE, canPresentShareDialog);
+    }
+    private void performPublish(PendingAction action, boolean allowNoSession) {
+        Session session = Session.getActiveSession();
+        if (session != null) {
+            pendingAction = action;
+            if (hasPublishPermission()) {
+                // We can do the action right away.
+                handlePendingAction();
+                return;
+            } else if (session.isOpened()) {
+                // We need to get new permissions, then complete the action when we get called back.
+                session.requestNewPublishPermissions(new Session.NewPermissionsRequest(this, PERMISSION));
+                return;
+            }
+        }
+        if (allowNoSession) {
+            pendingAction = action;
+            handlePendingAction();
+        }
     }
 }
